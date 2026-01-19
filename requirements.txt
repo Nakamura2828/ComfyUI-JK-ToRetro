@@ -1,0 +1,13 @@
+# Core dependencies
+wand
+Pillow
+numpy
+torch
+
+# Development dependencies
+black>=23.0.0
+flake8>=6.0.0
+pytest>=7.0.0
+
+# ComfyUI is assumed to be installed separately
+# ImageMagick is assumed to be installed separately
