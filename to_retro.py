@@ -222,32 +222,100 @@ def apply_retro_conversion(img, conversion_func, target_width, target_height, as
     Apply retro conversion with simplified 4:3 output.
 
     This function handles the workflow:
-    1. Fit input to 4:3 aspect ratio (Pad/Crop/Stretch)
-    2. Resize to target resolution with Lanczos
-    3. Apply palette conversion with dithering
+    1. Calculate content dimensions that fit in target dimensions
+    2. Resize to content resolution with Lanczos (without padding)
+    3. Apply palette conversion with dithering (only to content)
+    4. Add padding if needed (Pad mode only)
 
     Args:
         img: Wand Image object
         conversion_func: The retro conversion function to apply (palette application)
         target_width: Target resolution width (limited by retro format)
         target_height: Target resolution height (4:3 ratio)
-        aspect_mode: How to fit input to display ('Pad', 'Crop', or 'Stretch')
+        aspect_mode: How to fit input to display:
+            - 'Pad': Fit to target, add black bars (letterbox/pillarbox)
+            - 'Fit': Fit to target, no black bars (content-only, smaller output)
+            - 'Crop': Crop to fill target completely
+            - 'Stretch': Stretch to exact target dimensions
         dither_method: Dithering method to use
 
     Returns:
         The modified Wand Image object at target resolution
     """
-    # Step 1: Apply aspect mode to fit input to 4:3 aspect ratio at target resolution
-    _apply_aspect_mode(img, target_width, target_height, aspect_mode)
+    # Step 1: Calculate content dimensions based on aspect mode
+    content_width, content_height = _calculate_content_dimensions(
+        img, target_width, target_height, aspect_mode
+    )
 
-    # Step 2: Resize to target resolution with Lanczos for smooth downscaling
-    img.resize(target_width, target_height, filter='lanczos')
+    # Step 2: Resize to content dimensions (without padding) with Lanczos
+    if aspect_mode == 'Crop':
+        # For crop mode, we need to resize larger then crop
+        img.transform(resize=f'{target_width}x{target_height}^')
+        img.crop(width=target_width, height=target_height, gravity='center')
+    elif aspect_mode == 'Stretch':
+        # Stretch directly to target dimensions
+        img.resize(target_width, target_height, filter='lanczos')
+    else:  # Pad or Fit mode
+        # Resize to content dimensions only
+        img.resize(content_width, content_height, filter='lanczos')
 
-    # Step 3: Apply palette conversion with dithering
-    # Note: For ordered dithering, the conversion_func will handle it at PIL level
+    # Step 3: Apply palette conversion with dithering (only to content, no padding yet)
     img = conversion_func(img, dither_method)
 
+    # Step 4: Add padding if needed (Pad mode only, Fit mode skips this)
+    if aspect_mode == 'Pad' and (content_width != target_width or content_height != target_height):
+        _add_padding(img, target_width, target_height)
+
     return img
+
+
+def _calculate_content_dimensions(img, target_width, target_height, aspect_mode='Pad'):
+    """
+    Calculate the content dimensions that will fit in target dimensions.
+
+    For Pad/Fit mode: Calculate dimensions that fit within target maintaining aspect ratio
+    For Crop/Stretch mode: Return target dimensions (no special calculation needed)
+
+    Args:
+        img: Wand Image object
+        target_width: Target width
+        target_height: Target height
+        aspect_mode: 'Pad', 'Fit', 'Crop', or 'Stretch'
+
+    Returns:
+        Tuple of (content_width, content_height)
+    """
+    if aspect_mode not in ('Pad', 'Fit'):
+        # For Crop and Stretch modes, content fills entire target dimensions
+        return (target_width, target_height)
+
+    # For Pad and Fit modes, calculate dimensions that fit within target maintaining aspect ratio
+    input_aspect = img.width / img.height
+    target_aspect = target_width / target_height
+
+    if input_aspect > target_aspect:
+        # Input is wider than target, fit to width
+        content_width = target_width
+        content_height = int(target_width / input_aspect)
+    else:
+        # Input is taller than target, fit to height
+        content_height = target_height
+        content_width = int(target_height * input_aspect)
+
+    return (content_width, content_height)
+
+
+def _add_padding(img, target_width, target_height):
+    """
+    Add black padding to center image in target dimensions.
+
+    Args:
+        img: Wand Image object (will be modified in place)
+        target_width: Target width after padding
+        target_height: Target height after padding
+    """
+    img.background_color = Color('black')
+    img.extent(width=target_width, height=target_height, gravity='center')
 
 
 def _apply_aspect_mode(img, target_width, target_height, aspect_mode='Pad'):

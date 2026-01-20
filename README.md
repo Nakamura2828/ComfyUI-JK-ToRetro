@@ -12,6 +12,7 @@ Retro graphics converter node for ComfyUI. Converts modern images to authentic r
   - **PC-98** (640x400, 16 colors)
 
 - **Flexible Aspect Ratio Handling:**
+  - Fit (maintain aspect ratio, no padding - default)
   - Pad (letterbox/pillarbox with black bars)
   - Crop (fill frame)
   - Stretch (distort to fit)
@@ -72,7 +73,8 @@ Located in the **JK-ToRetro** category.
   - CGA (Green/Red/Yellow)
   - PC-98
 - `aspect_mode` (dropdown): How to handle aspect ratio
-  - Pad (default) - Letterbox with black bars
+  - Fit (default) - Maintain aspect ratio, no padding
+  - Pad - Letterbox with black bars
   - Crop - Fill frame by cropping
   - Stretch - Distort to fit
 - `dither_method` (dropdown): Dithering algorithm
@@ -88,7 +90,7 @@ Located in the **JK-ToRetro** category.
 1. Load image (Load Image node)
 2. Connect to "Image to Retro" node
 3. Select desired retro format (e.g., "CGA (Cyan/Magenta/White)")
-4. Choose aspect mode (Pad, Crop, or Stretch)
+4. Choose aspect mode (Fit for content-only, Pad for letterboxing, Crop to fill, or Stretch to distort)
 5. Select dithering method (Floyd-Steinberg for smooth gradients, Ordered patterns for retro texture)
 6. Set scale multiplier (2x or 3x recommended for visibility)
 7. Preview or save output
@@ -121,13 +123,14 @@ Black, Green, Red, Yellow
 ### Image Processing Pipeline
 
 1. Input ComfyUI tensor converted to Wand Image object
-2. Aspect ratio handling applied (Pad/Crop/Stretch) to fit target 4:3 resolution
-3. Image resized to target resolution with Lanczos filter for smooth downscaling
+2. Content dimensions calculated based on aspect mode (Fit/Pad maintain aspect, Crop/Stretch fill target)
+3. Image resized to content dimensions with Lanczos filter for smooth downscaling
 4. Color reduction with palette mapping or quantization:
    - **Error diffusion** (Floyd-Steinberg/Riemersma/Jarvis-Judice-Ninke/Stucki/Burkes/Sierra variants/Atkinson/None): Applied via ImageMagick or hitherdither
    - **Ordered dithering** (Yliluoma/Cluster-dot/Bayer): Image converted to PIL, palette extracted (if adaptive), dithering applied via hitherdither, converted back to Wand
-5. Optional integer upscaling with nearest-neighbor filter
-6. Converted back to ComfyUI tensor
+5. Black padding added if Pad mode selected (Fit mode outputs content-only)
+6. Optional integer upscaling with nearest-neighbor filter
+7. Converted back to ComfyUI tensor
 
 This simplified pipeline eliminates moire artifacts while maintaining crisp pixels and the characteristic retro aesthetic through limited horizontal resolution and color palettes.
 
@@ -167,10 +170,11 @@ See `requirements.txt` for complete list.
 
 ## Roadmap
 
-### Current Features (v0.3.0)
+### Current Features (v0.3.1)
 - ✓ VGA, EGA, CGA (both palettes), PC-98 support
 - ✓ 4:3 aspect ratio output with square pixels
-- ✓ Pad/Crop/Stretch aspect ratio modes
+- ✓ Fit/Pad/Crop/Stretch aspect ratio modes (Fit default - content-only, no padding)
+- ✓ Optimized processing: padding applied after dithering (saves computation)
 - ✓ Integer upscaling (1-10x)
 - ✓ Comprehensive dithering algorithms:
   - ✓ Error diffusion: Floyd-Steinberg, Riemersma, Jarvis-Judice-Ninke, Stucki, Burkes, Sierra-3, Sierra-2, Sierra-2-4A, Atkinson, None
@@ -199,6 +203,11 @@ Issues and pull requests welcome!
 If you find this node useful, please star the repository on GitHub!
 
 ## Changelog
+
+### v0.3.1 (2026-01-19)
+- **Optimization:** Padding now applied after dithering (not before) to avoid wasting computation on black bars
+- **New aspect mode:** Added "Fit" mode (now default) - maintains aspect ratio without padding, outputs content-only
+- Aspect modes: Fit (content-only, default), Pad (letterbox), Crop (fill), Stretch (distort)
 
 ### v0.3.0 (2026-01-19)
 - **Major change:** Simplified to 4:3 output with square pixels, eliminating moire artifacts from PAR correction

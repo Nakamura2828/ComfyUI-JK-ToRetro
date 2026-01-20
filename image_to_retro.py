@@ -123,7 +123,7 @@ class ImageToRetro:
                     "CGA (Green/Red/Yellow)",
                     "PC-98"
                 ], {"default": "VGA"}),
-                "aspect_mode": (["Pad", "Crop", "Stretch"], {"default": "Pad"}),
+                "aspect_mode": (["Fit", "Pad", "Crop", "Stretch"], {"default": "Fit"}),
                 "dither_method": (dither_methods, {"default": "Floyd-Steinberg"}),
                 "scale_multiplier": ("INT", {
                     "default": 1,
