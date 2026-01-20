@@ -1,8 +1,223 @@
 from wand.image import Image
 from wand.color import Color
+from PIL import Image as PILImage
+import hitherdither
+import io
 
 
-def apply_pixel_aspect_ratio_correction(img, conversion_func, target_width, target_height, pixel_aspect_ratio, aspect_mode='Pad'):
+# Dithering method mappings for Bayer matrix ordered dithering
+ORDERED_DITHER_MAPS = {
+    'Bayer 2x2 (ordered)': 2,
+    'Bayer 4x4 (ordered)': 4,
+    'Bayer 8x8 (ordered)': 8,
+    'Bayer 16x16 (ordered)': 16,
+}
+
+# Yliluoma's ordered dithering (better for limited palettes)
+YLILUOMA_DITHER = {
+    'Yliluoma (ordered)': 'yliluoma'
+}
+
+# Cluster-dot dithering
+CLUSTER_DOT_DITHER = {
+    'Cluster-dot (ordered)': 'cluster'
+}
+
+# Error diffusion methods supported by ImageMagick
+IMAGEMAGICK_ERROR_DIFFUSION = {
+    'Floyd-Steinberg': 'floyd_steinberg',
+    'Riemersma': 'riemersma',
+    'None': 'no'
+}
+
+# Error diffusion methods supported by hitherdither
+HITHERDITHER_ERROR_DIFFUSION = {
+    'Jarvis-Judice-Ninke': 'jjn',
+    'Stucki': 'stucki',
+    'Burkes': 'burkes',
+    'Sierra-3': 'sierra3',
+    'Sierra-2': 'sierra2',
+    'Sierra-2-4A': 'sierra2_4a',
+    'Atkinson': 'atkinson'
+}
+
+# Combined error diffusion methods
+ERROR_DIFFUSION_METHODS = {**IMAGEMAGICK_ERROR_DIFFUSION, **HITHERDITHER_ERROR_DIFFUSION}
+
+
+def _is_ordered_dither(dither_method):
+    """Check if dither method is an ordered dither pattern."""
+    return (dither_method in ORDERED_DITHER_MAPS or
+            dither_method in YLILUOMA_DITHER or
+            dither_method in CLUSTER_DOT_DITHER)
+
+
+def _is_yliluoma_dither(dither_method):
+    """Check if dither method is Yliluoma's algorithm."""
+    return dither_method in YLILUOMA_DITHER
+
+
+def _is_cluster_dot_dither(dither_method):
+    """Check if dither method is cluster-dot."""
+    return dither_method in CLUSTER_DOT_DITHER
+
+
+def _get_bayer_order(dither_method):
+    """Get Bayer matrix order from user-friendly name."""
+    return ORDERED_DITHER_MAPS.get(dither_method, 8)
+
+
+def _get_error_diffusion_method(dither_method):
+    """Get ImageMagick error diffusion method from user-friendly name."""
+    return IMAGEMAGICK_ERROR_DIFFUSION.get(dither_method, 'floyd_steinberg')
+
+
+def _is_hitherdither_error_diffusion(dither_method):
+    """Check if dither method is a hitherdither error diffusion method."""
+    return dither_method in HITHERDITHER_ERROR_DIFFUSION
+
+
+def _get_hitherdither_error_diffusion_method(dither_method):
+    """Get hitherdither error diffusion method from user-friendly name."""
+    return HITHERDITHER_ERROR_DIFFUSION.get(dither_method, 'jjn')
+
+
+def _wand_to_pil(wand_img):
+    """Convert Wand Image to PIL Image."""
+    img_bytes = io.BytesIO()
+    wand_img.format = 'png'
+    wand_img.save(file=img_bytes)
+    img_bytes.seek(0)
+    pil_img = PILImage.open(img_bytes)
+    return pil_img.convert('RGB')
+
+
+def _pil_to_wand(pil_img):
+    """Convert PIL Image to Wand Image."""
+    img_bytes = io.BytesIO()
+    pil_img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    wand_img = Image(blob=img_bytes.read())
+    return wand_img
+
+
+def _apply_hitherdither_error_diffusion_with_palette(pil_img, palette_colors, dither_method):
+    """
+    Apply hitherdither error diffusion dithering with a specific palette.
+
+    Args:
+        pil_img: PIL Image in RGB mode
+        palette_colors: List of RGB tuples
+        dither_method: User-friendly dither method name
+
+    Returns:
+        PIL Image with error diffusion dithering applied
+    """
+    palette = hitherdither.palette.Palette(palette_colors)
+    method_name = _get_hitherdither_error_diffusion_method(dither_method)
+
+    # Get the appropriate diffusion function
+    if method_name == 'jjn':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='jarvis-judice-ninke'
+        )
+    elif method_name == 'stucki':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='stucki'
+        )
+    elif method_name == 'burkes':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='burkes'
+        )
+    elif method_name == 'sierra3':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='sierra3'
+        )
+    elif method_name == 'sierra2':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='sierra2'
+        )
+    elif method_name == 'sierra2_4a':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='sierra-2-4a'
+        )
+    elif method_name == 'atkinson':
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='atkinson'
+        )
+    else:
+        # Fallback to Floyd-Steinberg
+        dithered = hitherdither.diffusion.error_diffusion_dithering(
+            pil_img, palette, method='floyd-steinberg'
+        )
+
+    return dithered
+
+
+def _apply_ordered_dither_with_palette(pil_img, palette_colors, dither_method):
+    """
+    Apply ordered dithering with a specific palette using hitherdither.
+    Supports Bayer matrix, Yliluoma's algorithm, and cluster-dot.
+
+    Args:
+        pil_img: PIL Image in RGB mode
+        palette_colors: List of RGB tuples
+        dither_method: User-friendly dither method name
+
+    Returns:
+        PIL Image with ordered dithering applied
+    """
+    palette = hitherdither.palette.Palette(palette_colors)
+
+    if _is_yliluoma_dither(dither_method):
+        # Use Yliluoma's algorithm (better for limited palettes like CGA)
+        dithered = hitherdither.ordered.yliluoma.yliluomas_1_ordered_dithering(
+            pil_img, palette
+        )
+    elif _is_cluster_dot_dither(dither_method):
+        # Use cluster-dot dithering
+        dithered = hitherdither.ordered.cluster.cluster_dot_dithering(
+            pil_img, palette, [64, 64, 64]
+        )
+    else:
+        # Use Bayer matrix
+        order = _get_bayer_order(dither_method)
+        # The thresholds [64, 64, 64] control quantization levels per channel
+        # Higher values = less dithering/more solid colors, better color distribution for limited palettes
+        dithered = hitherdither.ordered.bayer.bayer_dithering(
+            pil_img, palette, [64, 64, 64], order=order
+        )
+
+    return dithered
+
+
+def _extract_palette_from_quantized(pil_img, num_colors):
+    """
+    Extract palette colors from a quantized PIL image.
+
+    Args:
+        pil_img: PIL Image in RGB mode
+        num_colors: Number of colors to quantize to
+
+    Returns:
+        List of RGB tuples representing the palette
+    """
+    # Quantize to get the adaptive palette
+    quantized = pil_img.quantize(colors=num_colors, method=2, dither=0)
+
+    # Extract palette colors
+    palette_data = quantized.getpalette()
+    palette_colors = []
+    for i in range(num_colors):
+        r = palette_data[i * 3]
+        g = palette_data[i * 3 + 1]
+        b = palette_data[i * 3 + 2]
+        palette_colors.append((r, g, b))
+
+    return palette_colors
+
+
+def apply_pixel_aspect_ratio_correction(img, conversion_func, target_width, target_height, pixel_aspect_ratio, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
     Apply pixel aspect ratio correction for authentic retro display.
 
@@ -19,6 +234,7 @@ def apply_pixel_aspect_ratio_correction(img, conversion_func, target_width, targ
         target_height: Native resolution height
         pixel_aspect_ratio: Width/Height ratio of pixels (e.g., 0.833 for CGA)
         aspect_mode: How to fit input to display ('Pad', 'Crop', or 'Stretch')
+        dither_method: Dithering method to use
 
     Returns:
         The modified Wand Image object with corrected aspect ratio
@@ -44,14 +260,15 @@ def apply_pixel_aspect_ratio_correction(img, conversion_func, target_width, targ
 
     img.resize(predistort_width, predistort_height, filter='lanczos')
 
-    # Step 4: Resize to native resolution and apply palette conversion
+    # Step 4: Resize to native resolution
     # Use nearest-neighbor to maintain sharp pixels
     img.resize(target_width, target_height, filter='point')
 
-    # Apply the palette conversion (now without aspect mode)
-    img = conversion_func(img)
+    # Step 5: Apply palette conversion with dithering
+    # Note: For ordered dithering, the conversion_func will handle it at PIL level
+    img = conversion_func(img, dither_method)
 
-    # Step 5: Post-distort back to 4:3 display dimensions
+    # Step 6: Post-distort back to 4:3 display dimensions
     img.resize(display_width, display_height, filter='point')
 
     return img
@@ -218,8 +435,13 @@ def convert_to_pc98(img, aspect_mode='Pad'):
 
 # Palette-only conversion functions (no resizing)
 
-def _apply_cga_palette(img, palette=1):
-    """Apply CGA palette without resizing."""
+def _apply_cga_palette(img, dither_method='Floyd-Steinberg', palette=1):
+    """
+    Apply CGA palette without resizing.
+
+    For ordered dithering, converts to PIL, applies Bayer dithering, converts back.
+    For error diffusion, uses ImageMagick remap.
+    """
     palettes = {
         1: [(0, 0, 0), (0, 255, 255), (255, 0, 255), (255, 255, 255)],
         2: [(0, 0, 0), (0, 255, 0), (255, 0, 0), (255, 255, 0)]
@@ -228,22 +450,43 @@ def _apply_cga_palette(img, palette=1):
     if palette not in palettes:
         raise ValueError("Palette must be 1 or 2")
 
-    with Image(width=2, height=2) as palette_img:
-        colors = palettes[palette]
-        for idx, (r, g, b) in enumerate(colors):
-            x = idx % 2
-            y = idx // 2
-            with Color(f'rgb({r},{g},{b})') as color:
-                palette_img[x, y] = color
+    palette_colors = palettes[palette]
 
-        img.filter = 'point'
-        img.remap(affinity=palette_img, method='floyd_steinberg')
+    if _is_ordered_dither(dither_method):
+        # Use hitherdither for ordered dithering
+        pil_img = _wand_to_pil(img)
+        dithered_pil = _apply_ordered_dither_with_palette(pil_img, palette_colors, dither_method)
+        img.close()
+        return _pil_to_wand(dithered_pil)
+    elif _is_hitherdither_error_diffusion(dither_method):
+        # Use hitherdither for additional error diffusion methods
+        pil_img = _wand_to_pil(img)
+        dithered_pil = _apply_hitherdither_error_diffusion_with_palette(pil_img, palette_colors, dither_method)
+        img.close()
+        return _pil_to_wand(dithered_pil)
+    else:
+        # Use ImageMagick for Floyd-Steinberg, Riemersma, and None
+        with Image(width=2, height=2) as palette_img:
+            for idx, (r, g, b) in enumerate(palette_colors):
+                x = idx % 2
+                y = idx // 2
+                with Color(f'rgb({r},{g},{b})') as color:
+                    palette_img[x, y] = color
 
-    return img
+            img.filter = 'point'
+            method = _get_error_diffusion_method(dither_method)
+            img.remap(affinity=palette_img, method=method)
+
+        return img
 
 
-def _apply_ega_palette(img):
-    """Apply EGA palette without resizing."""
+def _apply_ega_palette(img, dither_method='Floyd-Steinberg'):
+    """
+    Apply EGA palette without resizing.
+
+    For ordered dithering, converts to PIL, applies Bayer dithering, converts back.
+    For error diffusion, uses ImageMagick remap.
+    """
     ega_colors = [
         (0, 0, 0), (0, 0, 170), (0, 170, 0), (0, 170, 170),
         (170, 0, 0), (170, 0, 170), (170, 85, 0), (170, 170, 170),
@@ -251,74 +494,135 @@ def _apply_ega_palette(img):
         (255, 85, 85), (255, 85, 255), (255, 255, 85), (255, 255, 255)
     ]
 
-    with Image(width=4, height=4) as palette_img:
-        for idx, (r, g, b) in enumerate(ega_colors):
-            x = idx % 4
-            y = idx // 4
-            with Color(f'rgb({r},{g},{b})') as color:
-                palette_img[x, y] = color
+    if _is_ordered_dither(dither_method):
+        # Use hitherdither for ordered dithering
+        pil_img = _wand_to_pil(img)
+        dithered_pil = _apply_ordered_dither_with_palette(pil_img, ega_colors, dither_method)
+        img.close()
+        return _pil_to_wand(dithered_pil)
+    elif _is_hitherdither_error_diffusion(dither_method):
+        # Use hitherdither for additional error diffusion methods
+        pil_img = _wand_to_pil(img)
+        dithered_pil = _apply_hitherdither_error_diffusion_with_palette(pil_img, ega_colors, dither_method)
+        img.close()
+        return _pil_to_wand(dithered_pil)
+    else:
+        # Use ImageMagick for Floyd-Steinberg, Riemersma, and None
+        with Image(width=4, height=4) as palette_img:
+            for idx, (r, g, b) in enumerate(ega_colors):
+                x = idx % 4
+                y = idx // 4
+                with Color(f'rgb({r},{g},{b})') as color:
+                    palette_img[x, y] = color
 
+            img.filter = 'point'
+            method = _get_error_diffusion_method(dither_method)
+            img.remap(affinity=palette_img, method=method)
+
+        return img
+
+
+def _apply_vga_palette(img, dither_method='Floyd-Steinberg'):
+    """
+    Apply VGA 256-color quantization without resizing.
+
+    For ordered dithering, extracts adaptive palette then applies Bayer dithering.
+    For error diffusion, uses ImageMagick quantize.
+    """
+    if _is_ordered_dither(dither_method) or _is_hitherdither_error_diffusion(dither_method):
+        # Convert to PIL
+        pil_img = _wand_to_pil(img)
+
+        # Extract adaptive palette by quantizing
+        palette_colors = _extract_palette_from_quantized(pil_img, 256)
+
+        # Apply dithering with the extracted palette
+        if _is_ordered_dither(dither_method):
+            dithered_pil = _apply_ordered_dither_with_palette(pil_img, palette_colors, dither_method)
+        else:
+            dithered_pil = _apply_hitherdither_error_diffusion_with_palette(pil_img, palette_colors, dither_method)
+
+        img.close()
+        return _pil_to_wand(dithered_pil)
+    else:
+        # Use ImageMagick for Floyd-Steinberg, Riemersma, and None
         img.filter = 'point'
-        img.remap(affinity=palette_img, method='floyd_steinberg')
-
-    return img
-
-
-def _apply_vga_palette(img):
-    """Apply VGA 256-color quantization without resizing."""
-    img.filter = 'point'
-    img.quantize(number_colors=256, dither='floyd_steinberg')
-    return img
+        method = _get_error_diffusion_method(dither_method)
+        img.quantize(number_colors=256, dither=method)
+        return img
 
 
-def _apply_pc98_palette(img):
-    """Apply PC-98 16-color quantization without resizing."""
-    img.filter = 'point'
-    img.quantize(number_colors=16, dither='floyd_steinberg')
-    return img
+def _apply_pc98_palette(img, dither_method='Floyd-Steinberg'):
+    """
+    Apply PC-98 16-color quantization without resizing.
+
+    For ordered dithering, extracts adaptive palette then applies Bayer dithering.
+    For error diffusion, uses ImageMagick quantize.
+    """
+    if _is_ordered_dither(dither_method) or _is_hitherdither_error_diffusion(dither_method):
+        # Convert to PIL
+        pil_img = _wand_to_pil(img)
+
+        # Extract adaptive palette by quantizing
+        palette_colors = _extract_palette_from_quantized(pil_img, 16)
+
+        # Apply dithering with the extracted palette
+        if _is_ordered_dither(dither_method):
+            dithered_pil = _apply_ordered_dither_with_palette(pil_img, palette_colors, dither_method)
+        else:
+            dithered_pil = _apply_hitherdither_error_diffusion_with_palette(pil_img, palette_colors, dither_method)
+
+        img.close()
+        return _pil_to_wand(dithered_pil)
+    else:
+        # Use ImageMagick for Floyd-Steinberg, Riemersma, and None
+        img.filter = 'point'
+        method = _get_error_diffusion_method(dither_method)
+        img.quantize(number_colors=16, dither=method)
+        return img
 
 
 # Wrapper functions with pixel aspect ratio correction
 
-def convert_to_cga_with_par(img, palette=1, aspect_mode='Pad'):
+def convert_to_cga_with_par(img, palette=1, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
     Convert to CGA with pixel aspect ratio correction.
     CGA 320x200 displayed at 4:3 → PAR = 0.833 (5:6)
     """
     return apply_pixel_aspect_ratio_correction(
-        img, lambda x: _apply_cga_palette(x, palette=palette),
-        320, 200, 0.833, aspect_mode=aspect_mode
+        img, lambda x, d: _apply_cga_palette(x, dither_method=d, palette=palette),
+        320, 200, 0.833, aspect_mode=aspect_mode, dither_method=dither_method
     )
 
 
-def convert_to_ega_with_par(img, aspect_mode='Pad'):
+def convert_to_ega_with_par(img, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
     Convert to EGA with pixel aspect ratio correction.
     EGA 640x350 displayed at 4:3 → PAR = 0.729 (35:48)
     """
     return apply_pixel_aspect_ratio_correction(
         img, _apply_ega_palette,
-        640, 350, 0.729, aspect_mode=aspect_mode
+        640, 350, 0.729, aspect_mode=aspect_mode, dither_method=dither_method
     )
 
 
-def convert_to_vga_with_par(img, aspect_mode='Pad'):
+def convert_to_vga_with_par(img, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
     Convert to VGA with pixel aspect ratio correction.
     VGA 640x480 is already 4:3 with square pixels → PAR = 1.0
     """
     return apply_pixel_aspect_ratio_correction(
         img, _apply_vga_palette,
-        640, 480, 1.0, aspect_mode=aspect_mode
+        640, 480, 1.0, aspect_mode=aspect_mode, dither_method=dither_method
     )
 
 
-def convert_to_pc98_with_par(img, aspect_mode='Pad'):
+def convert_to_pc98_with_par(img, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
     Convert to PC-98 with pixel aspect ratio correction.
     PC-98 640x400 displayed at 4:3 → PAR = 0.833 (5:6)
     """
     return apply_pixel_aspect_ratio_correction(
         img, _apply_pc98_palette,
-        640, 400, 0.833, aspect_mode=aspect_mode
+        640, 400, 0.833, aspect_mode=aspect_mode, dither_method=dither_method
     )

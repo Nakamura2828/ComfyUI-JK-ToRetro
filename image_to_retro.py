@@ -15,12 +15,14 @@ import io
 try:
     from .to_retro import (
         convert_to_cga_with_par, convert_to_ega_with_par,
-        convert_to_vga_with_par, convert_to_pc98_with_par
+        convert_to_vga_with_par, convert_to_pc98_with_par,
+        ORDERED_DITHER_MAPS, YLILUOMA_DITHER, CLUSTER_DOT_DITHER, ERROR_DIFFUSION_METHODS
     )
 except ImportError:
     from to_retro import (
         convert_to_cga_with_par, convert_to_ega_with_par,
-        convert_to_vga_with_par, convert_to_pc98_with_par
+        convert_to_vga_with_par, convert_to_pc98_with_par,
+        ORDERED_DITHER_MAPS, YLILUOMA_DITHER, CLUSTER_DOT_DITHER, ERROR_DIFFUSION_METHODS
     )
 
 
@@ -102,6 +104,15 @@ class ImageToRetro:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Build dithering method list
+        # Order: Error diffusion → Yliluoma → Cluster-dot → Bayer patterns
+        dither_methods = (
+            list(ERROR_DIFFUSION_METHODS.keys()) +
+            list(YLILUOMA_DITHER.keys()) +
+            list(CLUSTER_DOT_DITHER.keys()) +
+            list(ORDERED_DITHER_MAPS.keys())
+        )
+
         return {
             "required": {
                 "image_in": ("IMAGE", {}),
@@ -113,6 +124,7 @@ class ImageToRetro:
                     "PC-98"
                 ], {"default": "VGA"}),
                 "aspect_mode": (["Pad", "Crop", "Stretch"], {"default": "Pad"}),
+                "dither_method": (dither_methods, {"default": "Floyd-Steinberg"}),
                 "scale_multiplier": ("INT", {
                     "default": 1,
                     "min": 1,
@@ -128,7 +140,7 @@ class ImageToRetro:
     FUNCTION = "image_to_retro"
     CATEGORY = "JK-ToRetro"
 
-    def image_to_retro(self, image_in, output_type="VGA", aspect_mode="Pad", scale_multiplier=1):
+    def image_to_retro(self, image_in, output_type="VGA", aspect_mode="Pad", dither_method="Floyd-Steinberg", scale_multiplier=1):
         """
         Convert image to retro graphics format.
 
@@ -136,6 +148,7 @@ class ImageToRetro:
             image_in: ComfyUI IMAGE tensor
             output_type: Target retro format
             aspect_mode: How to handle aspect ratio (Pad, Crop, Stretch)
+            dither_method: Dithering method (error diffusion or ordered)
             scale_multiplier: Integer scaling factor (1-10x)
 
         Returns:
@@ -150,15 +163,15 @@ class ImageToRetro:
 
         # Apply retro conversion based on output type (with pixel aspect ratio correction)
         if output_type == "VGA":
-            wand_img = convert_to_vga_with_par(wand_img, aspect_mode=aspect_mode)
+            wand_img = convert_to_vga_with_par(wand_img, aspect_mode=aspect_mode, dither_method=dither_method)
         elif output_type == "EGA":
-            wand_img = convert_to_ega_with_par(wand_img, aspect_mode=aspect_mode)
+            wand_img = convert_to_ega_with_par(wand_img, aspect_mode=aspect_mode, dither_method=dither_method)
         elif output_type == "CGA (Cyan/Magenta/White)":
-            wand_img = convert_to_cga_with_par(wand_img, palette=1, aspect_mode=aspect_mode)
+            wand_img = convert_to_cga_with_par(wand_img, palette=1, aspect_mode=aspect_mode, dither_method=dither_method)
         elif output_type == "CGA (Green/Red/Yellow)":
-            wand_img = convert_to_cga_with_par(wand_img, palette=2, aspect_mode=aspect_mode)
+            wand_img = convert_to_cga_with_par(wand_img, palette=2, aspect_mode=aspect_mode, dither_method=dither_method)
         elif output_type == "PC-98":
-            wand_img = convert_to_pc98_with_par(wand_img, aspect_mode=aspect_mode)
+            wand_img = convert_to_pc98_with_par(wand_img, aspect_mode=aspect_mode, dither_method=dither_method)
         else:
             raise ValueError(f"Unknown output type: {output_type}")
 

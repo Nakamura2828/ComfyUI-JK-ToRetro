@@ -3,6 +3,7 @@ wand
 Pillow
 numpy
 torch
+git+https://github.com/hbldh/hitherdither.git
 
 # Development dependencies
 black>=23.0.0

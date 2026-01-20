@@ -1,5 +1,5 @@
 """
-Test script for ImageToRetro node
+Test the newly added dithering methods (cluster-dot and hitherdither error diffusion)
 """
 
 import sys
@@ -12,8 +12,8 @@ import to_retro
 import image_to_retro
 from image_to_retro import ImageToRetro
 
-def test_image_to_retro():
-    """Test the ImageToRetro node with a sample image"""
+def test_new_dithering_methods():
+    """Test the newly added dithering methods"""
 
     # Load test image
     pil_img = PILImage.open('examples/sample1.png')
@@ -32,20 +32,21 @@ def test_image_to_retro():
     # Create node instance
     node = ImageToRetro()
 
-    # Test different output types with different dithering methods
+    # Test new dithering methods with CGA (easiest to see differences)
     test_cases = [
-        ("CGA (Cyan/Magenta/White)", "Floyd-Steinberg"),
-        ("CGA (Cyan/Magenta/White)", "Riemersma"),
-        ("CGA (Cyan/Magenta/White)", "None"),
-        ("CGA (Cyan/Magenta/White)", "Yliluoma (ordered)"),
-        ("CGA (Cyan/Magenta/White)", "Bayer 8x8 (ordered)"),
-        ("EGA", "Floyd-Steinberg"),
-        ("EGA", "Yliluoma (ordered)"),
-        ("EGA", "Bayer 8x8 (ordered)"),
-        ("VGA", "Floyd-Steinberg"),
-        ("VGA", "Bayer 8x8 (ordered)"),
-        ("PC-98", "Floyd-Steinberg"),
-        ("PC-98", "Bayer 8x8 (ordered)"),
+        # New error diffusion methods
+        ("CGA (Cyan/Magenta/White)", "Jarvis-Judice-Ninke"),
+        ("CGA (Cyan/Magenta/White)", "Stucki"),
+        ("CGA (Cyan/Magenta/White)", "Burkes"),
+        ("CGA (Cyan/Magenta/White)", "Sierra-3"),
+        ("CGA (Cyan/Magenta/White)", "Sierra-2"),
+        ("CGA (Cyan/Magenta/White)", "Sierra-2-4A"),
+        ("CGA (Cyan/Magenta/White)", "Atkinson"),
+        # New ordered dithering
+        ("CGA (Cyan/Magenta/White)", "Cluster-dot (ordered)"),
+        # Also test with EGA to verify it works with 16-color palette
+        ("EGA", "Atkinson"),
+        ("EGA", "Cluster-dot (ordered)"),
     ]
 
     for output_type, dither_method in test_cases:
@@ -67,9 +68,9 @@ def test_image_to_retro():
             # Save output for visual inspection
             output_np = (output_tensor[0].numpy() * 255).astype(np.uint8)
             output_pil = PILImage.fromarray(output_np)
-            format_name = output_type.replace(' ', '_').replace('/', '_')
-            dither_name = dither_method.replace(' ', '_').replace('/', '_')
-            output_filename = f"test_output_{format_name}_{dither_name}.png"
+            format_name = output_type.replace(' ', '_').replace('/', '_').replace('(', '').replace(')', '')
+            dither_name = dither_method.replace(' ', '_').replace('/', '_').replace('(', '').replace(')', '').replace('-', '_')
+            output_filename = f"test_new_{format_name}_{dither_name}.png"
             output_pil.save(output_filename)
             print(f"  Saved to {output_filename}")
 
@@ -78,7 +79,7 @@ def test_image_to_retro():
             import traceback
             traceback.print_exc()
 
-    print("\n✓ All tests completed!")
+    print("\n✓ All new dithering method tests completed!")
 
 if __name__ == '__main__':
-    test_image_to_retro()
+    test_new_dithering_methods()

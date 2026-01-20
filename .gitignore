@@ -15,7 +15,8 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
-test_output*.*
+test_*.png
+test_*.jpg
 
 # IDEs
 .vscode/*

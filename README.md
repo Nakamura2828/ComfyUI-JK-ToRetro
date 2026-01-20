@@ -18,7 +18,9 @@ Retro graphics converter node for ComfyUI. Converts modern images to authentic r
 
 - **Integer Upscaling:** Scale output 1-10x with nearest-neighbor filtering for crisp pixelated aesthetic
 
-- **Floyd-Steinberg Dithering:** Smooth color transitions despite limited palettes
+- **Multiple Dithering Algorithms:**
+  - **Error Diffusion:** Floyd-Steinberg, Riemersma, or None
+  - **Ordered Dithering:** Yliluoma's algorithm (optimized for limited palettes) and Bayer matrix patterns (2x2, 4x4, 8x8, 16x16)
 
 ## Installation
 
@@ -73,6 +75,9 @@ Located in the **JK-ToRetro** category.
   - Pad (default) - Letterbox with black bars
   - Crop - Fill frame by cropping
   - Stretch - Distort to fit
+- `dither_method` (dropdown): Dithering algorithm
+  - **Error Diffusion:** Floyd-Steinberg (default), Riemersma, None
+  - **Ordered Dithering:** Yliluoma (optimized for CGA/EGA), Bayer 2x2, Bayer 4x4, Bayer 8x8, Bayer 16x16
 - `scale_multiplier` (INT slider, 1-10): Integer upscaling factor
 
 **Outputs:**
@@ -84,8 +89,9 @@ Located in the **JK-ToRetro** category.
 2. Connect to "Image to Retro" node
 3. Select desired retro format (e.g., "CGA (Cyan/Magenta/White)")
 4. Choose aspect mode (Pad, Crop, or Stretch)
-5. Set scale multiplier (2x or 3x recommended for visibility)
-6. Preview or save output
+5. Select dithering method (Floyd-Steinberg for smooth gradients, Ordered patterns for retro texture)
+6. Set scale multiplier (2x or 3x recommended for visibility)
+7. Preview or save output
 
 ## Technical Details
 
@@ -115,15 +121,37 @@ Black, Green, Red, Yellow
 ### Image Processing Pipeline
 
 1. Input ComfyUI tensor converted to Wand Image object
-2. **Pre-distortion** - Image compressed to compensate for non-square pixels (Lanczos filter)
-3. Aspect ratio handling applied (Pad/Crop/Stretch) to pre-distorted image
+2. Aspect ratio handling applied (Pad/Crop/Stretch) to fit 4:3 display dimensions
+3. **Pre-distortion** - Image compressed to compensate for non-square pixels (Lanczos filter)
 4. Resized to target native retro resolution (nearest-neighbor)
-5. Color reduction with Floyd-Steinberg dithering
+5. Color reduction with palette mapping or quantization:
+   - **Error diffusion** (Floyd-Steinberg/Riemersma/None): Applied via ImageMagick remap/quantize
+   - **Ordered dithering** (Bayer): Image converted to PIL, palette extracted (if adaptive), Bayer dithering applied via hitherdither, converted back to Wand
 6. **Post-distortion** - Image stretched to 4:3 display aspect ratio (nearest-neighbor)
 7. Optional integer upscaling with nearest-neighbor filter
 8. Converted back to ComfyUI tensor
 
 The pre/post-distortion steps ensure that images appear with correct proportions as they would have on original 4:3 CRT displays, accounting for the non-square pixels of formats like CGA, EGA, and PC-98.
+
+### Dithering Methods
+
+**Error Diffusion Methods:**
+- **Floyd-Steinberg** (default): Smooth gradients with diagonal patterns, best for photorealistic images
+- **Riemersma**: Hilbert curve dithering, creates unique serpentine patterns
+- **None**: No dithering at all - plain quantization/palette mapping with visible color banding and posterization
+
+**Ordered Dithering:**
+- **Yliluoma**: Optimized for limited palettes (CGA/EGA), distributes colors more evenly, creates hand-dithered aesthetic
+- **Bayer 2x2**: Smallest dithering pattern, coarse but fast
+- **Bayer 4x4**: Medium pattern size, good balance
+- **Bayer 8x8**: Fine dithering pattern, smooth gradients
+- **Bayer 16x16**: Very fine pattern, smoothest but most subtle
+
+**Implementation Details:**
+- **Fixed palettes** (CGA, EGA): Yliluoma or Bayer dithering applied with exact palette colors via hitherdither library
+- **Adaptive palettes** (VGA, PC-98): Image quantized to extract palette, then dithering applied with extracted colors
+- **Yliluoma** uses a sophisticated algorithm designed specifically for small palettes, better color distribution than Bayer for 4-16 color palettes
+- **Bayer** matrix creates the characteristic retro "checkerboard" or "crosshatch" patterns, uses tuned thresholds [64, 64, 64] for better color balance
 
 ## Dependencies
 
@@ -133,21 +161,23 @@ The pre/post-distortion steps ensure that images appear with correct proportions
 - ImageMagick (system library)
 - Pillow (PIL)
 - NumPy
+- hitherdither (for ordered dithering with custom palettes)
 
 See `requirements.txt` for complete list.
 
 ## Roadmap
 
-### Current Features (v0.1.0)
+### Current Features (v0.2.2)
 - ✓ VGA, EGA, CGA (both palettes), PC-98 support
 - ✓ Automatic pixel aspect ratio correction for authentic 4:3 display
 - ✓ Pad/Crop/Stretch aspect ratio modes
 - ✓ Integer upscaling (1-10x)
-- ✓ Floyd-Steinberg dithering
+- ✓ Multiple dithering algorithms:
+  - ✓ Error diffusion: Floyd-Steinberg, Riemersma, None
+  - ✓ Ordered dithering: Yliluoma's algorithm (optimized for limited palettes) + Bayer matrix (2x2, 4x4, 8x8, 16x16)
 
 ### Future Enhancements
 - [ ] Additional retro formats (Commodore 64, Amiga, ZX Spectrum, Apple II, etc.)
-- [ ] Configurable dithering algorithms (ordered, Bayer matrix, etc.)
 - [ ] Custom palette support
 - [ ] Scanline effects
 - [ ] CRT simulation (phosphor glow, screen curvature, bloom)
@@ -170,6 +200,24 @@ Issues and pull requests welcome!
 If you find this node useful, please star the repository on GitHub!
 
 ## Changelog
+
+### v0.2.2 (2026-01-19)
+- Added Yliluoma's ordered dithering algorithm (optimized for limited palettes like CGA/EGA)
+- Improved Bayer dithering with tuned thresholds [64, 64, 64] for better color distribution
+- Yliluoma creates more even color distribution and hand-dithered aesthetic compared to Bayer
+
+### v0.2.1 (2026-01-19)
+- Fixed ordered dithering to work correctly with custom palettes
+- Replaced ImageMagick's `ordered_dither` with hitherdither library (Bayer matrix)
+- Ordered dithering now properly respects palette colors (CGA, EGA, VGA, PC-98)
+- Adaptive palette extraction for VGA/PC-98 ordered dithering
+- Simplified dithering options: Bayer 2x2, 4x4, 8x8, 16x16
+
+### v0.2.0 (2026-01-19)
+- Added multiple dithering algorithms:
+  - Error diffusion methods: Floyd-Steinberg, Riemersma, None
+  - Ordered dithering: 19 threshold map patterns (dispersed, halftone, circles)
+- User-friendly dithering method names with plain English descriptions
 
 ### v0.1.0 (2026-01-19)
 - Added automatic pixel aspect ratio correction for authentic 4:3 display
