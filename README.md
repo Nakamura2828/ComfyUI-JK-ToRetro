@@ -97,15 +97,15 @@ Located in the **JK-ToRetro** category.
 
 ### Retro Format Specifications
 
-| Format | Native Resolution | Display Aspect | Output (1x) | PAR | Notes |
-|--------|------------------|----------------|-------------|-----|-------|
-| VGA | 640x480 | 4:3 | 640x480 | 1.0 | Standard VGA mode 13h |
-| EGA | 640x350 | 4:3 | 640x480 | 0.729 | Authentic IBM EGA palette |
-| CGA (P1) | 320x200 | 4:3 | 320x240 | 0.833 | Cyan/Magenta/White palette |
-| CGA (P2) | 320x200 | 4:3 | 320x240 | 0.833 | Green/Red/Yellow palette |
-| PC-98 | 640x400 | 4:3 | 640x480 | 0.833 | NEC PC-9800 series |
+| Format | Output Resolution | Aspect Ratio | Colors | Notes |
+|--------|------------------|--------------|--------|-------|
+| VGA | 640x480 | 4:3 | 256 | Standard VGA mode 13h |
+| EGA | 640x480 | 4:3 | 16 | Authentic IBM EGA palette |
+| CGA (P1) | 320x240 | 4:3 | 4 | Cyan/Magenta/White palette |
+| CGA (P2) | 320x240 | 4:3 | 4 | Green/Red/Yellow palette |
+| PC-98 | 640x480 | 4:3 | 16 | NEC PC-9800 series |
 
-**Note:** All formats include automatic pixel aspect ratio (PAR) correction. The node pre-distorts input images to compensate for non-square pixels, applies the retro conversion, then post-distorts to display at proper 4:3 aspect ratio.
+**Note:** All formats output at 4:3 aspect ratio with square pixels for clean display on modern monitors. The horizontal resolution matches the authentic retro format limits to maintain the characteristic low-resolution aesthetic.
 
 ### Color Palettes
 
@@ -121,17 +121,15 @@ Black, Green, Red, Yellow
 ### Image Processing Pipeline
 
 1. Input ComfyUI tensor converted to Wand Image object
-2. Aspect ratio handling applied (Pad/Crop/Stretch) to fit 4:3 display dimensions
-3. **Pre-distortion** - Image compressed to compensate for non-square pixels (Lanczos filter)
-4. Resized to target native retro resolution (nearest-neighbor)
-5. Color reduction with palette mapping or quantization:
-   - **Error diffusion** (Floyd-Steinberg/Riemersma/None): Applied via ImageMagick remap/quantize
-   - **Ordered dithering** (Bayer): Image converted to PIL, palette extracted (if adaptive), Bayer dithering applied via hitherdither, converted back to Wand
-6. **Post-distortion** - Image stretched to 4:3 display aspect ratio (nearest-neighbor)
-7. Optional integer upscaling with nearest-neighbor filter
-8. Converted back to ComfyUI tensor
+2. Aspect ratio handling applied (Pad/Crop/Stretch) to fit target 4:3 resolution
+3. Image resized to target resolution with Lanczos filter for smooth downscaling
+4. Color reduction with palette mapping or quantization:
+   - **Error diffusion** (Floyd-Steinberg/Riemersma/Jarvis-Judice-Ninke/Stucki/Burkes/Sierra variants/Atkinson/None): Applied via ImageMagick or hitherdither
+   - **Ordered dithering** (Yliluoma/Cluster-dot/Bayer): Image converted to PIL, palette extracted (if adaptive), dithering applied via hitherdither, converted back to Wand
+5. Optional integer upscaling with nearest-neighbor filter
+6. Converted back to ComfyUI tensor
 
-The pre/post-distortion steps ensure that images appear with correct proportions as they would have on original 4:3 CRT displays, accounting for the non-square pixels of formats like CGA, EGA, and PC-98.
+This simplified pipeline eliminates moire artifacts while maintaining crisp pixels and the characteristic retro aesthetic through limited horizontal resolution and color palettes.
 
 ### Dithering Methods
 
@@ -148,10 +146,12 @@ The pre/post-distortion steps ensure that images appear with correct proportions
 - **Bayer 16x16**: Very fine pattern, smoothest but most subtle
 
 **Implementation Details:**
-- **Fixed palettes** (CGA, EGA): Yliluoma or Bayer dithering applied with exact palette colors via hitherdither library
+- **Fixed palettes** (CGA, EGA): Dithering applied with exact palette colors via hitherdither library
 - **Adaptive palettes** (VGA, PC-98): Image quantized to extract palette, then dithering applied with extracted colors
 - **Yliluoma** uses a sophisticated algorithm designed specifically for small palettes, better color distribution than Bayer for 4-16 color palettes
+- **Cluster-dot** creates halftone-style patterns reminiscent of print media
 - **Bayer** matrix creates the characteristic retro "checkerboard" or "crosshatch" patterns, uses tuned thresholds [64, 64, 64] for better color balance
+- **Error diffusion** methods spread quantization error to neighboring pixels for smooth gradients
 
 ## Dependencies
 
@@ -167,21 +167,20 @@ See `requirements.txt` for complete list.
 
 ## Roadmap
 
-### Current Features (v0.2.2)
+### Current Features (v0.3.0)
 - ✓ VGA, EGA, CGA (both palettes), PC-98 support
-- ✓ Automatic pixel aspect ratio correction for authentic 4:3 display
+- ✓ 4:3 aspect ratio output with square pixels
 - ✓ Pad/Crop/Stretch aspect ratio modes
 - ✓ Integer upscaling (1-10x)
-- ✓ Multiple dithering algorithms:
-  - ✓ Error diffusion: Floyd-Steinberg, Riemersma, None
-  - ✓ Ordered dithering: Yliluoma's algorithm (optimized for limited palettes) + Bayer matrix (2x2, 4x4, 8x8, 16x16)
+- ✓ Comprehensive dithering algorithms:
+  - ✓ Error diffusion: Floyd-Steinberg, Riemersma, Jarvis-Judice-Ninke, Stucki, Burkes, Sierra-3, Sierra-2, Sierra-2-4A, Atkinson, None
+  - ✓ Ordered dithering: Yliluoma (optimized for limited palettes), Cluster-dot, Bayer matrix (2x2, 4x4, 8x8, 16x16)
 
 ### Future Enhancements
 - [ ] Additional retro formats (Commodore 64, Amiga, ZX Spectrum, Apple II, etc.)
 - [ ] Custom palette support
 - [ ] Scanline effects
 - [ ] CRT simulation (phosphor glow, screen curvature, bloom)
-- [ ] Optional toggle to disable pixel aspect ratio correction
 
 ## License
 
@@ -200,6 +199,13 @@ Issues and pull requests welcome!
 If you find this node useful, please star the repository on GitHub!
 
 ## Changelog
+
+### v0.3.0 (2026-01-19)
+- **Major change:** Simplified to 4:3 output with square pixels, eliminating moire artifacts from PAR correction
+- Output resolutions: CGA 320x240, EGA 640x480, VGA 640x480, PC-98 640x480
+- Added 7 additional error diffusion methods via hitherdither: Jarvis-Judice-Ninke, Stucki, Burkes, Sierra-3, Sierra-2, Sierra-2-4A, Atkinson
+- Added Cluster-dot ordered dithering
+- Cleaner output suitable for modern displays while maintaining retro aesthetic through limited resolution and color palettes
 
 ### v0.2.2 (2026-01-19)
 - Added Yliluoma's ordered dithering algorithm (optimized for limited palettes like CGA/EGA)

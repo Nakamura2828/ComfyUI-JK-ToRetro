@@ -217,59 +217,35 @@ def _extract_palette_from_quantized(pil_img, num_colors):
     return palette_colors
 
 
-def apply_pixel_aspect_ratio_correction(img, conversion_func, target_width, target_height, pixel_aspect_ratio, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
+def apply_retro_conversion(img, conversion_func, target_width, target_height, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
-    Apply pixel aspect ratio correction for authentic retro display.
+    Apply retro conversion with simplified 4:3 output.
 
     This function handles the workflow:
-    1. Fit input to 4:3 display aspect ratio (Pad/Crop/Stretch)
-    2. Pre-distort to compensate for non-square pixels (Lanczos)
-    3. Resize to native resolution (nearest-neighbor) and apply palette conversion
-    4. Post-distort back to 4:3 display (nearest-neighbor)
+    1. Fit input to 4:3 aspect ratio (Pad/Crop/Stretch)
+    2. Resize to target resolution with Lanczos
+    3. Apply palette conversion with dithering
 
     Args:
         img: Wand Image object
-        conversion_func: The retro conversion function to apply (without aspect_mode)
-        target_width: Native resolution width
-        target_height: Native resolution height
-        pixel_aspect_ratio: Width/Height ratio of pixels (e.g., 0.833 for CGA)
+        conversion_func: The retro conversion function to apply (palette application)
+        target_width: Target resolution width (limited by retro format)
+        target_height: Target resolution height (4:3 ratio)
         aspect_mode: How to fit input to display ('Pad', 'Crop', or 'Stretch')
         dither_method: Dithering method to use
 
     Returns:
-        The modified Wand Image object with corrected aspect ratio
+        The modified Wand Image object at target resolution
     """
-    # Step 1: Calculate 4:3 display dimensions based on native resolution
-    display_width = target_width
-    display_height = int(target_width * 3 / 4)
+    # Step 1: Apply aspect mode to fit input to 4:3 aspect ratio at target resolution
+    _apply_aspect_mode(img, target_width, target_height, aspect_mode)
 
-    # Step 2: Apply aspect mode to fit input to 4:3 display dimensions
-    _apply_aspect_mode(img, display_width, display_height, aspect_mode)
+    # Step 2: Resize to target resolution with Lanczos for smooth downscaling
+    img.resize(target_width, target_height, filter='lanczos')
 
-    # Step 3: Pre-distort to compensate for non-square pixels
-    # We need to compress the image so that when it's displayed at native resolution
-    # with non-square pixels, it will look correct
-    if pixel_aspect_ratio < 1.0:
-        # Pixels are taller than wide - compress height
-        predistort_width = display_width
-        predistort_height = int(display_height * pixel_aspect_ratio)
-    else:
-        # Pixels are wider than tall - compress width
-        predistort_width = int(display_width * pixel_aspect_ratio)
-        predistort_height = display_height
-
-    img.resize(predistort_width, predistort_height, filter='lanczos')
-
-    # Step 4: Resize to native resolution
-    # Use nearest-neighbor to maintain sharp pixels
-    img.resize(target_width, target_height, filter='point')
-
-    # Step 5: Apply palette conversion with dithering
+    # Step 3: Apply palette conversion with dithering
     # Note: For ordered dithering, the conversion_func will handle it at PIL level
     img = conversion_func(img, dither_method)
-
-    # Step 6: Post-distort back to 4:3 display dimensions
-    img.resize(display_width, display_height, filter='point')
 
     return img
 
@@ -582,47 +558,47 @@ def _apply_pc98_palette(img, dither_method='Floyd-Steinberg'):
         return img
 
 
-# Wrapper functions with pixel aspect ratio correction
+# Wrapper functions for retro conversions with 4:3 output
 
 def convert_to_cga_with_par(img, palette=1, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
-    Convert to CGA with pixel aspect ratio correction.
-    CGA 320x200 displayed at 4:3 → PAR = 0.833 (5:6)
+    Convert to CGA format at 4:3 aspect ratio.
+    Output: 320x240 (maintains horizontal resolution, 4:3 aspect)
     """
-    return apply_pixel_aspect_ratio_correction(
+    return apply_retro_conversion(
         img, lambda x, d: _apply_cga_palette(x, dither_method=d, palette=palette),
-        320, 200, 0.833, aspect_mode=aspect_mode, dither_method=dither_method
+        320, 240, aspect_mode=aspect_mode, dither_method=dither_method
     )
 
 
 def convert_to_ega_with_par(img, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
-    Convert to EGA with pixel aspect ratio correction.
-    EGA 640x350 displayed at 4:3 → PAR = 0.729 (35:48)
+    Convert to EGA format at 4:3 aspect ratio.
+    Output: 640x480 (maintains horizontal resolution, 4:3 aspect)
     """
-    return apply_pixel_aspect_ratio_correction(
+    return apply_retro_conversion(
         img, _apply_ega_palette,
-        640, 350, 0.729, aspect_mode=aspect_mode, dither_method=dither_method
+        640, 480, aspect_mode=aspect_mode, dither_method=dither_method
     )
 
 
 def convert_to_vga_with_par(img, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
-    Convert to VGA with pixel aspect ratio correction.
-    VGA 640x480 is already 4:3 with square pixels → PAR = 1.0
+    Convert to VGA format at 4:3 aspect ratio.
+    Output: 640x480 (already 4:3)
     """
-    return apply_pixel_aspect_ratio_correction(
+    return apply_retro_conversion(
         img, _apply_vga_palette,
-        640, 480, 1.0, aspect_mode=aspect_mode, dither_method=dither_method
+        640, 480, aspect_mode=aspect_mode, dither_method=dither_method
     )
 
 
 def convert_to_pc98_with_par(img, aspect_mode='Pad', dither_method='Floyd-Steinberg'):
     """
-    Convert to PC-98 with pixel aspect ratio correction.
-    PC-98 640x400 displayed at 4:3 → PAR = 0.833 (5:6)
+    Convert to PC-98 format at 4:3 aspect ratio.
+    Output: 640x480 (maintains horizontal resolution, 4:3 aspect)
     """
-    return apply_pixel_aspect_ratio_correction(
+    return apply_retro_conversion(
         img, _apply_pc98_palette,
-        640, 400, 0.833, aspect_mode=aspect_mode, dither_method=dither_method
+        640, 480, aspect_mode=aspect_mode, dither_method=dither_method
     )
