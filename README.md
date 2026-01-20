@@ -2,6 +2,35 @@
 
 Retro graphics converter node for ComfyUI. Converts modern images to authentic retro computing styles (VGA, EGA, CGA, PC-98) with proper color palettes, dithering, and resolution constraints.
 
+## Examples
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="examples/cga_yliluoma.png" alt="CGA with Yliluoma dithering" width="320"/><br/>
+      <b>CGA (4 colors)</b><br/>
+      Yliluoma ordered dithering
+    </td>
+    <td align="center">
+      <img src="examples/vga_o2x2.png" alt="VGA with Bayer 2x2 dithering" width="320"/><br/>
+      <b>VGA (256 colors)</b><br/>
+      Bayer 2x2 ordered dithering
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="examples/ega_stucki.png" alt="EGA with Stucki dithering" width="320"/><br/>
+      <b>EGA (16 colors)</b><br/>
+      Stucki error diffusion
+    </td>
+    <td align="center">
+      <img src="examples/PC-98_flloyd_steinberg.png" alt="PC-98 with Floyd-Steinberg" width="320"/><br/>
+      <b>PC-98 (16 colors)</b><br/>
+      Floyd-Steinberg error diffusion
+    </td>
+  </tr>
+</table>
+
 ## Features
 
 - **Authentic Retro Formats:**
